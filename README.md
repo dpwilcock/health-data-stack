@@ -6,36 +6,23 @@ This repo is the **map**, not the code. The actual pipelines live in focused sib
 
 ## The big picture
 
-```
-                ┌─────────────────────────────────────────────┐
-                │            Messaging (Telegram)             │
-                │  voice notes / text check-ins / requests    │
-                └───────────────┬─────────────────────────────┘
-                                │
-                    ┌───────────▼───────────┐
-                    │  AI/LLM agent (OpenClaw)│
-                    │  • parses voice → Whisper │
-                    │  • understands intent     │
-                    │  • runs scheduled jobs    │
-                    │  • formats digests        │
-                    └───────┬───────────┬───────┘
-                            │           │
-              ┌─────────────▼──┐    ┌───▼─────────────────┐
-              │  Ingesters     │    │  PostgreSQL (dunkle_db)│
-              │  (scheduled    │    │  • mood_log           │
-              │   / on-demand) │    │  • food_log_entry     │
-              └───────┬────────┘    │  • health_records     │
-                      │             │  • airthings_samples  │
-              ┌───────▼────────┐    │  • purpleair_samples  │
-              │  Device/cloud  │    │  • daily_summary      │
-              │  APIs + LAN    │    └─────────▲─────────────┘
-              │  sensors       │              │
-              └────────────────┘              │
-                                   ┌──────────┴──────────┐
-                                   │  Analysis / reports │
-                                   │  correlation, fatigue│
-                                   │  CUSUM, forecasting  │
-                                   └─────────────────────┘
+```mermaid
+flowchart TB
+    MSG["Messaging (Telegram)<br/>voice notes / text check-ins / requests"]
+    AGENT["AI/LLM agent (OpenClaw)<br/>parses voice → Whisper<br/>understands intent<br/>runs scheduled jobs<br/>formats digests"]
+    ING["Ingesters<br/>(scheduled / on-demand)"]
+    DB[("PostgreSQL<br/>mood_log · food_log_entry<br/>health_records · airthings_samples<br/>purpleair_samples · daily_summary")]
+    SENSORS["Device/cloud APIs + LAN sensors"]
+    ANALYZE["Analysis / reports<br/>correlation · fatigue<br/>CUSUM · forecasting"]
+
+    MSG --> AGENT
+    AGENT --> ING
+    ING --> SENSORS
+    SENSORS --> ING
+    ING --> DB
+    AGENT --> DB
+    DB --> ANALYZE
+    ANALYZE --> MSG
 ```
 
 **How it works in practice:**
@@ -53,7 +40,8 @@ This repo is the **map**, not the code. The actual pipelines live in focused sib
 | [apple-health-data-monitor](https://github.com/dpwilcock/apple-health-data-monitor) | Apple Watch / Health data → Postgres (local receiver), fatigue & correlation analysis |
 | [airthings-sync](https://github.com/dpwilcock/airthings-sync) | Airthings indoor-air sensors → Postgres, resumable backfill |
 | [purpleair-sync](https://github.com/dpwilcock/purpleair-sync) | PurpleAir outdoor-air sensor → Postgres, live LAN + cloud history |
-| [municipal-council-watchdog](https://github.com/dpwilcock/municipal-council-watchdog) | Civic watchdog (the non-health sibling — same stack, community focus) |
+
+See also: [municipal-council-watchdog](https://github.com/dpwilcock/municipal-council-watchdog) — the civic sibling (same agent orchestration, but JS→Discord rather than Postgres ingestion).
 
 ## Shared conventions
 
@@ -62,6 +50,13 @@ This repo is the **map**, not the code. The actual pipelines live in focused sib
 - **No secrets in repos** — all credentials come from environment variables (see each repo's README).
 - **Idempotent writes** — inserts use `ON CONFLICT DO NOTHING` / upserts, so re-runs are safe.
 - **Env-var config** everywhere: `PGDATABASE`, `PG_DSN`, `LOG_FILE`, `HEALTH_HOST`/`HEALTH_PORT`, etc.
+
+## What I've learned
+
+- **Low friction is the whole game.** Voice notes are what made daily logging stick — typing a mood score was a chore; speaking it isn't. Any habit system that adds a step after the moment dies.
+- **Idempotent writes saved me.** Cron jobs double-fire, agents retry, imports get re-run. `ON CONFLICT DO NOTHING` means none of that corrupts anything.
+- **The agent is the glue, not the pipes.** The interesting work is parsing intent and presenting answers; the ingesters stay dumb and small.
+- **Keep the why in the README.** The pattern is copyable; the motivation is what someone actually needs to steal.
 
 ## Adding your own data
 
@@ -73,4 +68,4 @@ Use the same shape:
 
 ## License
 
-MIT, per-repo. This umbrella is just documentation.
+MIT, per-repo. This umbrella is just documentation. Shared as-is with no support or warranty.
